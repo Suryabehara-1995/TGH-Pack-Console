@@ -10,8 +10,21 @@ const ProductMapping = require("./models/ProductMapping");
 
 const app = express();
 
-// Middleware
-app.use(cors({ origin: "http://localhost:3000" }));
+const allowedOrigins = ["http://localhost:3000", "http://10.160.51.208:3000"];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
+    credentials: true, // Important for cookies or authentication
+  })
+);
+
 app.use(express.json({ limit: "10mb" }));
 
 // User schema and model
@@ -60,13 +73,13 @@ mongoose
           settingsAccess: true,
         },
       });
-
       await defaultAdmin.save();
       console.log("Default admin created with email: admin@example.com and password: admin123");
     }
   })
   .catch((err) => console.error("MongoDB Connection Error:", err));
 
+  
 // Register route
 app.post("/register", async (req, res) => {
   const { email, password, name, role, permissions } = req.body;
@@ -99,6 +112,8 @@ app.post("/register", async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
+
 
 // Login route
 app.post("/login", async (req, res) => {
@@ -277,7 +292,6 @@ app.get("/shiprocket-orders", async (req, res) => {
   }
 });
 
-// Sync orders to MongoDB
 app.post("/sync-orders", async (req, res) => {
   try {
     const { from, to, orders } = req.body;
@@ -289,7 +303,6 @@ app.post("/sync-orders", async (req, res) => {
     // Fetch product mappings using the new schema
     const productMappings = await ProductMapping.find({});
     const mappingDict = productMappings.reduce((acc, mapping) => {
-      // Map productName to updatedID instead of name to updated_id
       acc[mapping.productName] = mapping.updatedID;
       return acc;
     }, {});
@@ -301,11 +314,15 @@ app.post("/sync-orders", async (req, res) => {
       order.products.forEach((product) => {
         // Check if there's a mapping for this product name
         if (mappingDict[product.name]) {
-          // Update the product ID with the mapped updatedID
           product.updated_id = mappingDict[product.name];
-          // Optionally, you could also store the original productID if needed
-          product.original_id = product.product_id || product.id; // Adjust based on your Shiprocket response structure
+          product.original_id = product.product_id || product.id;
         }
+
+        // Ensure weight is a valid number
+        const weightMatch = product.channel_sku?.match(/(\d+)(g|kg)/i); // Extract weight from SKU
+        product.weight = weightMatch
+          ? parseFloat(weightMatch[1]) / (weightMatch[2].toLowerCase() === "kg" ? 1 : 1000) // Convert grams to kilograms
+          : 0; // Default to 0 if weight cannot be determined
       });
 
       const result = await Order.updateOne(
@@ -315,7 +332,7 @@ app.post("/sync-orders", async (req, res) => {
             order_date: order.order_date !== "Unknown Date" ? new Date(order.order_date) : null,
             customer: order.customer,
             shipments: order.shipments,
-            products: order.products, // This now includes the updated IDs
+            products: order.products, // This now includes the updated IDs and valid weights
             packed_status: order.packed_status,
             packed_date: order.packed_date !== "Unknown Date" ? new Date(order.packed_date) : null,
             packed_time: order.packed_time,
@@ -340,7 +357,6 @@ app.post("/sync-orders", async (req, res) => {
   }
 });
 
-// Update product mappings endpoint to match new schema
 app.post("/update-product-ids", async (req, res) => {
   const { productUpdates } = req.body;
 
@@ -351,7 +367,8 @@ app.post("/update-product-ids", async (req, res) => {
         { 
           $set: { 
             updatedID: update.updatedID,
-            productName: update.productName 
+            productName: update.productName,
+            sku: update.sku, // Add SKU to the update
           }
         },
         { upsert: true }
@@ -361,6 +378,17 @@ app.post("/update-product-ids", async (req, res) => {
   } catch (error) {
     console.error("Error updating product IDs:", error);
     res.status(500).json({ message: "Failed to update product IDs", error: error.message });
+  }
+});
+
+
+app.get("/get-previous-products", async (req, res) => {
+  try {
+    const products = await ProductMapping.find();
+    res.json(products);
+  } catch (error) {
+    console.error("Error fetching previous products:", error);
+    res.status(500).json({ message: "Failed to fetch previous products", error: error.message });
   }
 });
 
@@ -385,6 +413,37 @@ app.get("/order/:orderID", async (req, res) => {
   } catch (error) {
     console.error("Error fetching order details:", error);
     res.status(500).json({ message: "Failed to fetch order details", error: error.message });
+  }
+});
+
+
+
+
+const authenticateAdmin = (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+  if (!token) return res.status(401).json({ message: "Access denied" });
+
+  try {
+    const decoded = jwt.verify(token, "secretkey");
+    if (decoded.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden: Admins only" });
+    }
+    req.user = decoded; // Attach user info to the request
+    next();
+  } catch (error) {
+    res.status(400).json({ message: "Invalid token" });
+  }
+};
+
+
+// DELETE /admin/users/:id
+app.delete('/admin/users/:id', authenticateAdmin, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    await User.findByIdAndDelete(userId);
+    res.status(200).json({ message: 'User deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to delete user', error });
   }
 });
 
