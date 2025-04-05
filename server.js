@@ -79,7 +79,7 @@ mongoose
   })
   .catch((err) => console.error("MongoDB Connection Error:", err));
   app.get("/", (req, res) => {
-    res.send("Server is running ✅");
+    res.send("Server is running ✅ Hello world");
   });
   
 // Register route
