@@ -78,7 +78,9 @@ mongoose
     }
   })
   .catch((err) => console.error("MongoDB Connection Error:", err));
-
+  app.get("/", (req, res) => {
+    res.send("Server is running ✅");
+  });
   
 // Register route
 app.post("/register", async (req, res) => {
@@ -126,7 +128,7 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user._id, role: user.role, permissions: user.permissions },
       "secretkey",
-      { expiresIn: "4h" }
+      { expiresIn: "10h" }
     );
     res.json({
       token,
