@@ -10,7 +10,11 @@ const ProductMapping = require("./models/ProductMapping");
 
 const app = express();
 
-const allowedOrigins = ["http://localhost:3000", "http://10.160.51.208:3000"];
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://10.160.51.208:3000",
+  "https://tghfrontend.onrender.com"
+];
 
 app.use(
   cors({
@@ -18,10 +22,11 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.log(`Blocked CORS origin: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },
-    credentials: true, // Important for cookies or authentication
+    credentials: true,
   })
 );
 
