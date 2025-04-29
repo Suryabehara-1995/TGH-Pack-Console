@@ -6,14 +6,14 @@ const OrderSchema = new mongoose.Schema({
   customer: {
     name: { type: String, default: "Unknown" },
     mobile: { type: String, default: "Unknown" },
-    email: { type: String, default: "Unknown" }
+    email: { type: String, default: "Unknown" },
   },
   shipments: [
     {
       courier_name: { type: String, default: "N/A" },
       awb_code: { type: String, default: "N/A" },
-      status: { type: String, default: "N/A" } // Added for Shiprocket status
-    }
+      status: { type: String, default: "N/A" }, // Added for Shiprocket status
+    },
   ],
   products: [
     {
@@ -22,8 +22,11 @@ const OrderSchema = new mongoose.Schema({
       sku: { type: String, default: "Unknown SKU" },
       name: { type: String, default: "Unknown Item" },
       quantity: { type: Number, default: 0 },
-      weight: { type: Number, default: 0 }
-    }
+      weight: { type: Number, default: 0 },
+      imageUrl: { type: String, default: "" }, // Added imageUrl field
+      productLocation: { type: String, default: "Unknown" }, // Added productLocation field
+      productCategory: { type: String, default: "Unknown" }, // Added productCategory field
+    },
   ],
   packed_status: { type: String, default: "Not Completed" },
   packed_date: { type: Date },
@@ -33,7 +36,7 @@ const OrderSchema = new mongoose.Schema({
   warehouse_out_date: { type: Date },
   warehouse_out_time: { type: String, default: "Unknown Time" },
   createdAt: { type: Date, default: Date.now },
-  shiprocketDate: { type: Date, default: Date.now }
+  shiprocketDate: { type: Date, default: Date.now },
 });
 
 const Order = mongoose.model("Order", OrderSchema);
