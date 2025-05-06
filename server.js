@@ -855,6 +855,96 @@ app.post("/sync-orders", async (req, res) => {
   }
 });
 
+
+
+
+// POST /sync-excel-orders
+app.post("/sync-excel-orders", authMiddleware, async (req, res) => {
+  try {
+    const { orders } = req.body;
+
+    if (!Array.isArray(orders) || orders.length === 0) {
+      return res.status(400).json({ message: "No orders provided in Excel data" });
+    }
+
+    let updatedCount = 0;
+    let skippedCount = 0;
+    const errors = [];
+
+    for (const excelOrder of orders) {
+      const {
+        "Order ID": orderId,
+        "End Time": endTime,
+        User: packedPersonName,
+      } = excelOrder;
+
+      // Validate required fields
+      if (!orderId || !endTime) {
+        errors.push(`Missing Order ID or End Time for order: ${orderId || "unknown"}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Parse End Time
+      let parsedEndTime;
+      try {
+        parsedEndTime = new Date(endTime);
+        if (isNaN(parsedEndTime)) {
+          throw new Error("Invalid date format");
+        }
+      } catch (error) {
+        errors.push(`Invalid End Time format for order ${orderId}: ${endTime}`);
+        skippedCount++;
+        continue;
+      }
+
+      // Extract packed_time (HH:MM:SS) and packed_date
+      const packedTime = parsedEndTime.toTimeString().split(" ")[0]; // e.g., "09:31:58"
+      const packedDate = parsedEndTime;
+
+      // Update Order in MongoDB
+      const result = await Order.updateOne(
+        { orderID: orderId },
+        {
+          $set: {
+            packed_status: "Completed",
+            packed_date: packedDate,
+            packed_time: packedTime,
+            packed_person_name: packedPersonName || "Unknown",
+            shiprocketDate: new Date(),
+          },
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        errors.push(`Order ${orderId} not found in database`);
+        skippedCount++;
+      } else if (result.modifiedCount > 0) {
+        updatedCount++;
+        console.log(`Updated order ${orderId} with packed details by user ${req.user.username || "unknown"}`);
+      } else {
+        console.log(`No changes needed for order ${orderId}`);
+        skippedCount++;
+      }
+    }
+
+    // Respond with sync results
+    res.json({
+      message: "Excel orders synced successfully",
+      updatedCount,
+      skippedCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
+  } catch (error) {
+    console.error("Error syncing Excel orders:", error);
+    res.status(500).json({ message: "Failed to sync Excel orders", error: error.message });
+  }
+});
+
+
+
+
+
 // Update product IDs in MongoDB
 // This route is used to update product IDs in the ProductMapping collection
 // It accepts an array of product updates in the request body
