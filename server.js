@@ -14,8 +14,7 @@ const app = express();
 const allowedOrigins = [
   "http://localhost:3000",
   "http://10.160.51.208:3000",
-  "https://tghfrontend.onrender.com",
-  "https://tgh-frontend.vercel.app"  
+  "https://tghfrontend.onrender.com"
 ];
 
 app.use(
