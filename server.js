@@ -477,6 +477,8 @@ app.get("/shiprocket-orders", async (req, res) => {
   }
 });
 
+
+
 // app.post("/sync-orders", async (req, res) => {
 //   try {
 //     const { from, to, orders } = req.body;
@@ -490,7 +492,12 @@ app.get("/shiprocket-orders", async (req, res) => {
 //     // Fetch product mappings
 //     const productMappings = await ProductMapping.find({});
 //     const mappingDict = productMappings.reduce((acc, mapping) => {
-//       acc[mapping.productName] = mapping.updatedID;
+//       acc[mapping.productName] = {
+//         updatedID: mapping.updatedID,
+//         productLocation: mapping.productLocation,
+//         productCategory: mapping.productCategory,
+//         imageUrl: mapping.imageUrl,
+//       };
 //       return acc;
 //     }, {});
 
@@ -498,10 +505,14 @@ app.get("/shiprocket-orders", async (req, res) => {
 //     let updatedAwbOrders = []; // Track orders with AWB changes
 
 //     for (const order of orders) {
-//       // Update product IDs in the order
+//       // Update product details in the order
 //       order.products.forEach((product) => {
 //         if (mappingDict[product.name]) {
-//           product.updated_id = mappingDict[product.name];
+//           // Update fields from ProductMapping
+//           product.updated_id = mappingDict[product.name].updatedID;
+//           product.productLocation = mappingDict[product.name].productLocation || "Unknown";
+//           product.productCategory = mappingDict[product.name].productCategory || "Unknown";
+//           product.imageUrl = mappingDict[product.name].imageUrl || "";
 //           product.original_id = product.product_id || product.id;
 //         }
 
@@ -513,10 +524,10 @@ app.get("/shiprocket-orders", async (req, res) => {
 //       });
 
 //       // Normalize shipments data
-//       const newShipments = order.shipments.map(shipment => ({
+//       const newShipments = order.shipments.map((shipment) => ({
 //         courier_name: shipment.courier_name || "N/A",
 //         awb_code: shipment.awb_code || "N/A",
-//         status: shipment.status || "N/A"
+//         status: shipment.status || "N/A",
 //       }));
 
 //       // Fetch existing order from MongoDB
@@ -550,27 +561,55 @@ app.get("/shiprocket-orders", async (req, res) => {
 //                   newAwb: newShipment.awb_code,
 //                   oldCourier: oldShipment.courier_name || "N/A",
 //                   newCourier: newShipment.courier_name,
-//                   newStatus: newShipment.status
+//                   newStatus: newShipment.status,
 //                 });
 //               }
 //             }
 //           }
 //         }
 
-//         if (shipmentsChanged) {
-//           // Update only changed fields
+//         // Compare existing products with new products
+//         const existingProducts = existingOrder.products || [];
+//         let productsChanged = false;
+
+//         // Check if products length or content differs
+//         if (existingProducts.length !== order.products.length) {
+//           productsChanged = true;
+//         } else {
+//           for (let i = 0; i < order.products.length; i++) {
+//             const oldProduct = existingProducts[i] || {};
+//             const newProduct = order.products[i];
+
+//             if (
+//               oldProduct.updated_id !== newProduct.updated_id ||
+//               oldProduct.productLocation !== newProduct.productLocation ||
+//               oldProduct.productCategory !== newProduct.productCategory ||
+//               oldProduct.imageUrl !== newProduct.imageUrl ||
+//               oldProduct.sku !== newProduct.sku ||
+//               oldProduct.name !== newProduct.name ||
+//               oldProduct.quantity !== newProduct.quantity ||
+//               oldProduct.weight !== newProduct.weight
+//             ) {
+//               productsChanged = true;
+//               break;
+//             }
+//           }
+//         }
+
+//         // Update order if shipments or products have changed
+//         if (shipmentsChanged || productsChanged) {
 //           const result = await Order.updateOne(
 //             { orderID: order.orderID },
 //             {
 //               $set: {
-//                 shipments: newShipments, // Update shipments if changed
+//                 shipments: newShipments,
 //                 order_date: order.order_date !== "Unknown Date" ? new Date(order.order_date) : null,
 //                 customer: {
 //                   name: order.customer.name || "Unknown",
 //                   mobile: order.customer.mobile || "Unknown",
-//                   email: order.customer.email || "Unknown"
+//                   email: order.customer.email || "Unknown",
 //                 },
-//                 products: order.products,
+//                 products: order.products, // Updated products array with new fields
 //                 packed_status: order.packed_status || "Not Completed",
 //                 packed_date: order.packed_date !== "Unknown Date" ? new Date(order.packed_date) : null,
 //                 packed_time: order.packed_time || "Unknown Time",
@@ -578,13 +617,13 @@ app.get("/shiprocket-orders", async (req, res) => {
 //                 warehouse_out: order.warehouse_out || "Unknown",
 //                 warehouse_out_date: order.warehouse_out_date !== "Unknown Date" ? new Date(order.warehouse_out_date) : null,
 //                 warehouse_out_time: order.warehouse_out_time || "Unknown Time",
-//                 shiprocketDate: new Date() // Update timestamp for sync
-//               }
+//                 shiprocketDate: new Date(),
+//               },
 //             }
 //           );
 
 //           if (result.modifiedCount > 0) {
-//             console.log(`Updated order ${order.orderID} with new shipments data`);
+//             console.log(`Updated order ${order.orderID} with ${shipmentsChanged ? "shipments" : ""} ${productsChanged ? "products" : ""} changes`);
 //           }
 //         } else {
 //           console.log(`No changes detected for order ${order.orderID}`);
@@ -599,10 +638,10 @@ app.get("/shiprocket-orders", async (req, res) => {
 //               customer: {
 //                 name: order.customer.name || "Unknown",
 //                 mobile: order.customer.mobile || "Unknown",
-//                 email: order.customer.email || "Unknown"
+//                 email: order.customer.email || "Unknown",
 //               },
 //               shipments: newShipments,
-//               products: order.products,
+//               products: order.products, // Updated products array with new fields
 //               packed_status: order.packed_status || "Not Completed",
 //               packed_date: order.packed_date !== "Unknown Date" ? new Date(order.packed_date) : null,
 //               packed_time: order.packed_time || "Unknown Time",
@@ -610,9 +649,9 @@ app.get("/shiprocket-orders", async (req, res) => {
 //               warehouse_out: order.warehouse_out || "Unknown",
 //               warehouse_out_date: order.warehouse_out_date !== "Unknown Date" ? new Date(order.warehouse_out_date) : null,
 //               warehouse_out_time: order.warehouse_out_time || "Unknown Time",
-//               shiprocketDate: new Date()
+//               shiprocketDate: new Date(),
 //             },
-//             $setOnInsert: { createdAt: new Date() }
+//             $setOnInsert: { createdAt: new Date() },
 //           },
 //           { upsert: true }
 //         );
@@ -623,11 +662,12 @@ app.get("/shiprocket-orders", async (req, res) => {
 //         }
 //       }
 //     }
+
 //     // Response with details
 //     res.json({
 //       message: "Orders synced successfully!",
 //       insertedCount,
-//       updatedAwbOrders: updatedAwbOrders.length > 0 ? updatedAwbOrders : "No AWB changes detected"
+//       updatedAwbOrders: updatedAwbOrders.length > 0 ? updatedAwbOrders : "No AWB changes detected",
 //     });
 //   } catch (error) {
 //     console.error("Error syncing orders:", error);
@@ -635,29 +675,13 @@ app.get("/shiprocket-orders", async (req, res) => {
 //   }
 // });
 
-// app.post("/update-product-ids", async (req, res) => {
-//   const { productUpdates } = req.body;
 
-//   try {
-//     for (const update of productUpdates) {
-//       await ProductMapping.updateOne(
-//         { productID: update.productID }, // Use productID as the unique identifier
-//         { 
-//           $set: { 
-//             updatedID: update.updatedID,
-//             productName: update.productName,
-//             sku: update.sku, // Add SKU to the update
-//           }
-//         },
-//         { upsert: true }
-//       );
-//     }
-//     res.json({ message: "Product IDs updated successfully!" });
-//   } catch (error) {
-//     console.error("Error updating product IDs:", error);
-//     res.status(500).json({ message: "Failed to update product IDs", error: error.message });
-//   }
-// });
+// Helper function to validate and convert date strings
+const parseValidDate = (dateString) => {
+  if (!dateString || dateString === "Unknown Date") return null;
+  const date = new Date(dateString);
+  return isNaN(date.getTime()) ? null : date;
+};
 
 app.post("/sync-orders", async (req, res) => {
   try {
@@ -675,7 +699,6 @@ app.post("/sync-orders", async (req, res) => {
       acc[mapping.productName] = {
         updatedID: mapping.updatedID,
         productLocation: mapping.productLocation,
-        productCategory: mapping.productCategory,
         imageUrl: mapping.imageUrl,
       };
       return acc;
@@ -688,10 +711,8 @@ app.post("/sync-orders", async (req, res) => {
       // Update product details in the order
       order.products.forEach((product) => {
         if (mappingDict[product.name]) {
-          // Update fields from ProductMapping
           product.updated_id = mappingDict[product.name].updatedID;
           product.productLocation = mappingDict[product.name].productLocation || "Unknown";
-          product.productCategory = mappingDict[product.name].productCategory || "Unknown";
           product.imageUrl = mappingDict[product.name].imageUrl || "";
           product.original_id = product.product_id || product.id;
         }
@@ -718,7 +739,6 @@ app.post("/sync-orders", async (req, res) => {
         const existingShipments = existingOrder.shipments || [];
         let shipmentsChanged = false;
 
-        // Check if shipments length or content differs
         if (existingShipments.length !== newShipments.length) {
           shipmentsChanged = true;
         } else {
@@ -748,11 +768,10 @@ app.post("/sync-orders", async (req, res) => {
           }
         }
 
-        // Compare existing products with new products
+        // Compare existing products for updated_id, productLocation, and imageUrl changes
         const existingProducts = existingOrder.products || [];
         let productsChanged = false;
 
-        // Check if products length or content differs
         if (existingProducts.length !== order.products.length) {
           productsChanged = true;
         } else {
@@ -763,7 +782,6 @@ app.post("/sync-orders", async (req, res) => {
             if (
               oldProduct.updated_id !== newProduct.updated_id ||
               oldProduct.productLocation !== newProduct.productLocation ||
-              oldProduct.productCategory !== newProduct.productCategory ||
               oldProduct.imageUrl !== newProduct.imageUrl ||
               oldProduct.sku !== newProduct.sku ||
               oldProduct.name !== newProduct.name ||
@@ -778,28 +796,15 @@ app.post("/sync-orders", async (req, res) => {
 
         // Update order if shipments or products have changed
         if (shipmentsChanged || productsChanged) {
+          const updateFields = {
+            ...(shipmentsChanged && { shipments: newShipments }),
+            ...(productsChanged && { products: order.products }),
+            shiprocketDate: new Date(),
+          };
+
           const result = await Order.updateOne(
             { orderID: order.orderID },
-            {
-              $set: {
-                shipments: newShipments,
-                order_date: order.order_date !== "Unknown Date" ? new Date(order.order_date) : null,
-                customer: {
-                  name: order.customer.name || "Unknown",
-                  mobile: order.customer.mobile || "Unknown",
-                  email: order.customer.email || "Unknown",
-                },
-                products: order.products, // Updated products array with new fields
-                packed_status: order.packed_status || "Not Completed",
-                packed_date: order.packed_date !== "Unknown Date" ? new Date(order.packed_date) : null,
-                packed_time: order.packed_time || "Unknown Time",
-                packed_person_name: order.packed_person_name || "Unknown",
-                warehouse_out: order.warehouse_out || "Unknown",
-                warehouse_out_date: order.warehouse_out_date !== "Unknown Date" ? new Date(order.warehouse_out_date) : null,
-                warehouse_out_time: order.warehouse_out_time || "Unknown Time",
-                shiprocketDate: new Date(),
-              },
-            }
+            { $set: updateFields }
           );
 
           if (result.modifiedCount > 0) {
@@ -814,20 +819,20 @@ app.post("/sync-orders", async (req, res) => {
           { orderID: order.orderID },
           {
             $set: {
-              order_date: order.order_date !== "Unknown Date" ? new Date(order.order_date) : null,
+              order_date: parseValidDate(order.order_date),
               customer: {
                 name: order.customer.name || "Unknown",
                 mobile: order.customer.mobile || "Unknown",
                 email: order.customer.email || "Unknown",
               },
               shipments: newShipments,
-              products: order.products, // Updated products array with new fields
+              products: order.products,
               packed_status: order.packed_status || "Not Completed",
-              packed_date: order.packed_date !== "Unknown Date" ? new Date(order.packed_date) : null,
+              packed_date: parseValidDate(order.packed_date),
               packed_time: order.packed_time || "Unknown Time",
               packed_person_name: order.packed_person_name || "Unknown",
               warehouse_out: order.warehouse_out || "Unknown",
-              warehouse_out_date: order.warehouse_out_date !== "Unknown Date" ? new Date(order.warehouse_out_date) : null,
+              warehouse_out_date: parseValidDate(order.warehouse_out_date),
               warehouse_out_time: order.warehouse_out_time || "Unknown Time",
               shiprocketDate: new Date(),
             },
@@ -854,7 +859,6 @@ app.post("/sync-orders", async (req, res) => {
     res.status(500).json({ message: "Failed to sync orders", error: error.message });
   }
 });
-
 
 
 
